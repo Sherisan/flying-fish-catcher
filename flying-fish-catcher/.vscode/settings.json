@@ -1,0 +1,7 @@
+{
+  "liveServer.settings.port": 5500,
+  "editor.tabSize": 2,
+  "files.eol": "\n",
+  "prettier.printWidth": 180,
+  "prettier.singleQuote": true
+}

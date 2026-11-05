@@ -1,0 +1,9 @@
+{
+  "name": "flying-fish-catcher",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Crash-style fishing game in plain HTML, CSS and canvas JavaScript (play credits only).",
+  "scripts": {
+    "start": "npx --yes http-server . -p 5500 -c-1 -o"
+  }
+}
