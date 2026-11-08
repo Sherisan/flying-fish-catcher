@@ -62,8 +62,12 @@ skyBtn.addEventListener('click', () => { setTheme(th.idx + 1); save(); });
 soundBtn.addEventListener('click', () => {
   soundOn = !soundOn; soundBtn.setAttribute('aria-pressed', String(soundOn));
   soundLabel.textContent = soundOn ? 'Sound on' : 'Sound off'; wavesPath.style.display = soundOn ? '' : 'none';
-  if (soundOn) unlockAudio();
+  if (soundOn) unlockAudio(); applyAudioLevels();
 });
+const musicBtn = $('musicBtn'), musicLabel = $('musicLabel');
+const showMusic = () => { musicBtn.setAttribute('aria-pressed', String(musicOn)); musicLabel.textContent = musicOn ? 'Music on' : 'Music off'; };
+showMusic();
+musicBtn.addEventListener('click', () => { setMusic(!musicOn); showMusic(); });
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'Space' || e.repeat) return;
   const t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'BUTTON' || t.tagName === 'TEXTAREA')) return;

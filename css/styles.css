@@ -173,3 +173,44 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
   .toast span,.banner{transition:none}
   .feed li{animation:none}
 }
+
+/* Narrow sidebar (half width) */
+.layout{grid-template-columns:250px minmax(0,1fr)}
+@media (max-width:1100px){ .layout{grid-template-columns:218px minmax(0,1fr)} }
+.tabs{gap:2px;padding:8px 4px 0}
+.tabs button{font-size:11px;padding:0 2px;line-height:1.1}
+.pane{padding:6px 4px 10px}
+.sum{font-size:11px;padding:4px 4px 6px}
+.list li{grid-template-columns:minmax(0,1fr) auto;gap:4px;padding:6px 4px;font-size:12.5px}
+.list li>.bet,.list li>.at,.list li.head>span:nth-child(2),.list li.head>span:nth-child(3){display:none}
+.who{gap:5px}
+.who i{width:18px;height:18px;font-size:9px}
+@media (max-width:900px){ .layout{grid-template-columns:minmax(0,1fr)} .list li>.bet,.list li>.at,.list li.head>span{display:revert} .list li{grid-template-columns:minmax(0,1fr) 42px 48px 76px} }
+
+/* Compact bet panel (about 30% shorter) */
+.slots{padding:8px;gap:10px}
+.slot{padding:6px 10px 3px;gap:5px;border-radius:12px}
+.slot-head{min-height:22px;font-size:12px}
+.slot-body{gap:10px}
+.stepper{grid-template-columns:32px minmax(0,1fr) 32px;gap:5px}
+.stepper input{height:30px;font-size:17px;border-radius:8px}
+.step{font-size:17px;border-radius:8px}
+.quick{margin-top:4px;gap:5px}
+.quick button{height:22px;font-size:12px;border-radius:6px}
+.action{min-height:58px;font-size:19px;border-radius:11px}
+.action small{font-size:12px}
+
+/* Multiplier read-out at half size */
+.hud{top:40px}
+.tag{font-size:9px}
+.mult{font-size:clamp(28px,4.3vw,66px)}
+.status{font-size:12px;min-height:15px}
+
+/* Catch messages at half size */
+.feed{width:130px;gap:3px;right:8px;bottom:8px}
+.feed li{gap:4px;padding:2px 5px 2px 2px;border-radius:6px;font-size:8px}
+.feed img{width:24px;height:14px}
+
+/* Multiplier centred over the sea */
+.hud{left:0;right:0}
+@media (max-width:900px){ .hud{right:0} }

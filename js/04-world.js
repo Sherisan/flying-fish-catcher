@@ -12,8 +12,8 @@ function resize() {
   W = Math.max(1, r.width); H = Math.max(1, r.height);
   DPR = Math.min(2, window.devicePixelRatio || 1);
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
-  S = clamp(Math.min(W / 1040, H / 505), 0.3, 1.35);
-  FS = Math.max(S, 0.52);
+  const baseS = clamp(Math.min(W / 1040, H / 505), 0.3, 1.35); S = baseS * 0.75; // 0.75 = ship size
+  FS = Math.max(baseS, 0.52);
   waterY = H * 0.56; horizonY = waterY - H * 0.07; deepY = waterY + (H - waterY) * 0.62;
   GRAV = H * 1.5;
   boat.x = W - 272 * S;
@@ -160,9 +160,18 @@ function updateArrow(dt) {
     else if (a.x < -40 || a.y < -40 || a.t > 1.1) { a.state = 'back'; a.t = 0; }
   } else if (a.state === 'reel') {
     const f = a.fish;
-    a.p = Math.min(1, a.p + dt / 0.75);
-    const crate = toWorld(CRATE.x, CRATE.y - 44), e = ease(a.p);
-    f.x = lerp(a.sx, crate.x, e); f.y = lerp(a.sy, crate.y, e) - Math.sin(Math.PI * a.p) * 80 * S;
+    a.p = Math.min(1, a.p + dt / 1.15);
+    const crate = toWorld(CRATE.x, CRATE.y - 44), m = muzzle(34);
+    if (a.p < 0.78) {
+      // reeled in along the rope, wriggling and dripping, sagging a little under its own weight
+      const q = a.p / 0.78, e = q * q * (3 - 2 * q);
+      f.x = lerp(a.sx, m.x, e); f.y = lerp(a.sy, m.y, e) + Math.sin(Math.PI * q) * 26 * S;
+      if (Math.random() < 0.35) parts.push({ type: 'drop', x: f.x + rand(-1, 1) * f.s * 0.5, y: f.y + f.s * 0.3, vx: rand(-20, 20) * FS, vy: rand(10, 60) * FS, r: rand(1, 2) * FS, life: 0.7, max: 0.7 });
+    } else {
+      // swung off the line into the crate
+      const q = (a.p - 0.78) / 0.22, e = ease(q);
+      f.x = lerp(m.x, crate.x, e); f.y = lerp(m.y, crate.y, e) - Math.sin(Math.PI * q) * 40 * S;
+    }
     f.spin = a.ang + Math.sin(T * 22) * 0.45; a.x = f.x; a.y = f.y;
     if (a.p >= 1) { landFish(f, 'Hank', game.phase === 'crashed' ? 'snagged' : 'harpooned'); crew.hankHappy = 1.2; arrow = null; gun.state = 'reload'; gun.timer = game.phase === 'crashed' ? 0.12 : 0.24; }
   } else if (a.state === 'back') {
@@ -212,15 +221,33 @@ function updateRod(dt) {
     else if (!biting && rod.t > rod.wait) { rod.state = 'bite'; rod.t = 0; }
     else if (biting && rod.t > 0.5) {
       const kind = pick(['snapper', 'snapper', 'snapper', 'sardine', 'puffer']);
-      rod.fish = makeFish(kind, rod.to, surf(rod.to) + 8 * FS); rod.fish.state = 'hooked'; rod.fish.hang = true;
-      rod.from = { x: rod.to, y: surf(rod.to) }; rod.state = 'reel'; rod.t = 0; splash(rod.to, surf(rod.to), 9, 0.7); sfx.reel();
+      rod.fish = makeFish(kind, rod.to + rand(-20, 20) * FS, surf(rod.to) + rand(50, 80) * FS); rod.fish.state = 'hooked'; rod.fish.hang = false; rod.fish.alpha = 0.6;
+      rod.from = { x: rod.fish.x, y: rod.fish.y }; rod.state = 'reel'; rod.t = 0; rod.up = false; splash(rod.to, surf(rod.to), 9, 0.7); sfx.reel();
     }
   } else if (rod.state === 'reel') {
-    const p = Math.min(1, rod.t / 1.3), f = rod.fish;
-    rod.bend = 1 - p * 0.7; target = -2.6;
-    if (p < 0.72) { const q = ease(p / 0.72); f.x = lerp(rod.from.x, tip.x, q); f.y = lerp(rod.from.y, tip.y + 18 * FS, q); }
-    else { const q = ease((p - 0.72) / 0.28), crate = toWorld(CRATE.x, CRATE.y - 44); f.x = lerp(tip.x, crate.x, q); f.y = lerp(tip.y + 18 * FS, crate.y, q) - Math.sin(Math.PI * q) * 30 * S; }
-    rod.bob = null;
+    const f = rod.fish, FIGHT = 1.2, AIR = 1.6;
+    rod.bob = null; target = -2.6;
+    let p = 0;
+    if (!rod.up) {
+      // under water: the fish darts side to side while the line drags it up to the surface
+      const k = Math.min(1, rod.t / FIGHT), ox = f.x, oy = f.y;
+      f.x = rod.from.x + Math.sin(rod.t * 7) * 22 * FS * (1 - k * 0.6); f.y = lerp(rod.from.y, surf(f.x) + 2 * FS, k * k);
+      f.vx = (f.x - ox) / Math.max(dt, 1e-3); f.vy = (f.y - oy) / Math.max(dt, 1e-3); f.alpha = 0.6;
+      rod.bend = 0.75 + 0.2 * Math.sin(rod.t * 18);
+      if (Math.random() < 0.5) parts.push({ type: 'bubble', x: f.x + rand(-4, 4) * FS, y: f.y - f.s * 0.3, vx: rand(-10, 10) * FS, vy: -rand(40, 90) * FS, r: rand(1, 2.4) * FS, life: 0.8, max: 0.8, seed: rand(0, 6) });
+      if (Math.random() < 0.25) parts.push({ type: 'foam', x: rod.to + rand(-10, 10) * FS, w: rand(6, 12) * FS, life: 0.6, max: 0.6, vx: 0 });
+      if (k >= 1) {
+        // bursts out of the water
+        rod.up = true; rod.t = 0; rod.from = { x: f.x, y: surf(f.x) }; f.hang = true; f.alpha = 1; f.vx = 0; f.vy = 0;
+        splash(f.x, surf(f.x), 16, 1.1); sfx.splash(0.15);
+      }
+    } else {
+      p = Math.min(1, rod.t / AIR);
+      rod.bend = 1 - p * 0.7;
+      if (p < 0.72) { const q = ease(p / 0.72); f.x = lerp(rod.from.x, tip.x, q); f.y = lerp(rod.from.y, tip.y + 18 * FS, q); }
+      else { const q = ease((p - 0.72) / 0.28), crate = toWorld(CRATE.x, CRATE.y - 44); f.x = lerp(tip.x, crate.x, q); f.y = lerp(tip.y + 18 * FS, crate.y, q) - Math.sin(Math.PI * q) * 30 * S; }
+      if (p < 0.5 && Math.random() < 0.6) parts.push({ type: 'drop', x: f.x + rand(-1, 1) * f.s * 0.4, y: f.y + f.s * 0.6, vx: rand(-15, 15) * FS, vy: rand(20, 70) * FS, r: rand(1, 2.2) * FS, life: 0.8, max: 0.8 });
+    }
     if (p >= 1) { landFish(f, 'Sipho', 'reeled in'); crew.siphoHappy = 1.4; rod.fish = null; rod.state = 'idle'; rod.t = 0; }
   } else if (rod.state === 'retrieve') {
     const p = Math.min(1, rod.t / 0.5);
@@ -245,7 +272,7 @@ function spawnJumper(kind) {
 }
 function panic(f, delay, dir) {
   f.state = 'flee'; f.delay = delay; f.claimed = false; f.alpha = 1; f.hang = false;
-  f.dir = dir || (f.x < boat.x ? -1 : 1); f.speed = rand(300, 520) * FS; f.kick = Math.sqrt(2 * GRAV * H * rand(0.08, 0.22));
+  f.dir = dir || (f.x < boat.x ? -1 : 1); const slow = f.kind === 'puffer' ? 0.4 : 1; f.speed = rand(300, 520) * FS * slow; f.kick = Math.sqrt(2 * GRAV * H * rand(0.08, 0.22) * slow);
 }
 function updateFish(dt) {
   for (let i = fishes.length - 1; i >= 0; i--) {
@@ -263,6 +290,7 @@ function updateFish(dt) {
       if (f.alpha <= 0) { fishes.splice(i, 1); continue; }
     } else if (f.state === 'flee') {
       if (f.delay > 0) { f.delay -= dt; continue; }
+      if (f.fadeIn) { f.alpha = Math.min(1, f.alpha + dt * 5); if (f.alpha >= 1) f.fadeIn = false; }
       const sy = surf(f.x);
       if (f.y > sy) {
         f.vy -= GRAV * 1.7 * dt; f.vy *= Math.exp(-1.2 * dt);
@@ -355,8 +383,13 @@ function updateSharks(dt) {
       }
       sh.x += sh.vx * dt; sh.y += sh.vy * dt;
     } else if (sh.state === 'dive') {
-      sh.vy *= Math.exp(-2 * dt); sh.x += sh.vx * dt; sh.y += sh.vy * dt; sh.alpha -= dt * 0.8;
-      if (sh.alpha <= 0) sharks.splice(i, 1);
+      // level out under the surface and swim on
+      const dir = sh.vx >= 0 ? 1 : -1, ty = Math.max(waterY + 80 * FS, Math.min(deepY - 10 * FS, sh.y));
+      sh.vx = lerp(sh.vx, dir * 110 * FS, 1 - Math.exp(-1.5 * dt));
+      sh.vy = lerp(sh.vy, (ty - sh.y) * 1.2, 1 - Math.exp(-2.5 * dt));
+      sh.x += sh.vx * dt; sh.y += sh.vy * dt; sh.gape = lerp(sh.gape || 0, 0, 1 - Math.exp(-6 * dt)); sh.swimT = (sh.swimT || 0) + dt;
+      if (sh.swimT > 1.5 && Math.abs(sh.vy) < 25 * FS) { sh.state = 'patrol'; sh.ph = rand(0, TAU); sh.by = sh.y - Math.sin(T * 0.9 + sh.ph) * 10 * FS; }
+      else if (sh.x < -280 * FS || sh.x > W + 280 * FS) sharks.splice(i, 1);
     }
   }
 }
@@ -384,9 +417,32 @@ function updateDolphins(dt) {
 }
 function whaleBreach() {
   if (breach) return;
-  const s = 46 * FS, x = clamp(W * 0.14, 120 * FS, boat.x - 420 * S);
-  breach = { x: x - 60 * FS, y: waterY + 260 * FS, vx: 85 * FS, vy: -Math.sqrt(2 * GRAV * H * 0.28), s, state: 'rise', alpha: 1, wig: 0 };
+  const s = 44 * FS, L = s * 6.4;
+  const x = clamp(W * 0.3, 60 * FS + L * 0.45, Math.max(60 * FS + L * 0.45, boat.x - 260 * S - L * 0.45));
+  const apex = clamp(H * 0.22, L * 0.3, Math.max(L * 0.3, waterY - L * 0.5 - 16 * FS));
+  const v0 = Math.sqrt(2 * GRAV * apex);
+  breach = { x, y: waterY + L * 0.56, vx: -26 * FS, vy: -v0, v0, s, L, state: 'shadow', t: 0, ta: 0, tAir: 2 * v0 / GRAV, ang: -1.3, twist: 1, alpha: 1, broke: false, ring: -1 };
   sfx.whale();
+}
+function breachNose(b) { return { x: b.x + Math.cos(b.ang) * b.L * 0.5, y: b.y + Math.sin(b.ang) * b.L * 0.5 }; }
+function breachSheet(b, n) {
+  for (let k = 0; k < n; k++) {
+    const u = rand(-0.5, 0.5), side = rand(-1, 1) * b.L * 0.1;
+    const px = b.x + Math.cos(b.ang) * u * b.L - Math.sin(b.ang) * side, py = b.y + Math.sin(b.ang) * u * b.L + Math.cos(b.ang) * side;
+    if (py < surf(px) - 4 * FS) parts.push({ type: 'drop', x: px, y: py, vx: b.vx * 0.3 + rand(-40, 40) * FS, vy: (b.state === 'air' ? b.vy * 0.35 : -b.v0 * 0.2) + rand(0, 80) * FS, r: rand(1.4, 3.8) * FS, life: 1.1, max: 1.1 });
+  }
+}
+function breachImpact(b) {
+  const sy = surf(b.x), span = Math.abs(Math.cos(b.ang)) * b.L * 0.5 + 30 * FS;
+  for (let i = 0; i < 7; i++) { const sx = b.x + lerp(-span, span, i / 6); splash(sx, surf(sx), 26, 2.1); }
+  for (let i = 0; i < 160; i++) {
+    const sx = b.x + rand(-span, span), up = Math.sqrt(2 * GRAV * H * rand(0.04, 0.3) * (1 - Math.abs(sx - b.x) / span * 0.6));
+    parts.push({ type: 'drop', x: sx, y: surf(sx), vx: (sx - b.x) * rand(0.8, 2.2) + rand(-40, 40) * FS, vy: -up, r: rand(1.8, 5) * FS, life: 2.4, max: 2.4 });
+  }
+  for (let i = 0; i < 22; i++) parts.push({ type: 'mist', x: b.x + rand(-span, span), y: sy - rand(10, H * 0.22), vx: rand(-40, 40) * FS, vy: -rand(10, 50) * FS, r: rand(18, 40) * FS, life: 2.8, max: 2.8 });
+  for (let i = 0; i < 14; i++) parts.push({ type: 'foam', x: b.x + rand(-span * 1.2, span * 1.2), w: rand(26, 60) * FS, life: 4, max: 4, vx: rand(-14, 14) * FS });
+  for (let i = 0; i < 60; i++) parts.push({ type: 'bubble', x: b.x + rand(-span, span), y: sy + rand(10, 90) * FS, vx: rand(-40, 40) * FS, vy: -rand(20, 70) * FS, r: rand(2, 6) * FS, life: rand(1.5, 2.8), max: 2.8, seed: rand(0, 6) });
+  b.ring = 0; shake = Math.max(shake, reduceMotion ? 0 : 0.5); sfx.splashBig();
 }
 function updateWhales(dt) {
   const w = deepWhale;
@@ -397,18 +453,35 @@ function updateWhales(dt) {
   }
   const b = breach;
   if (!b) return;
-  if (b.state === 'rise') { b.x += b.vx * dt; b.y += b.vy * dt; if (b.y < surf(b.x)) { b.state = 'air'; splash(b.x, surf(b.x), 34, 1.4); } }
-  else if (b.state === 'air') {
-    b.vy += GRAV * dt; b.x += b.vx * dt; b.y += b.vy * dt;
-    const ba = clamp(Math.atan2(b.vy, b.vx * 4), -0.95, 0.6), bl = b.s * 6.4;
-    for (let k = 0; k < 4; k++) { const u = rand(-0.45, 0.45), px = b.x + Math.cos(ba) * u * bl, py = b.y + Math.sin(ba) * u * bl + b.s * rand(0.3, 0.8); if (py < surf(px)) parts.push({ type: 'drop', x: px, y: py, vx: rand(-30, 30) * FS, vy: rand(0, 60) * FS, r: rand(1.5, 3.5) * FS, life: 1, max: 1 }); }
-    if (b.vy > 0 && b.y > surf(b.x)) {
-      b.state = 'dive';
-      for (let i = 0; i < 4; i++) { const sx = b.x + (i - 1.5) * 50 * FS; splash(sx, surf(sx), 22, 1.9); }
-      for (let i = 0; i < 6; i++) parts.push({ type: 'foam', x: b.x + rand(-120, 120) * FS, w: rand(20, 40) * FS, life: 2.6, max: 2.6, vx: rand(-10, 10) * FS });
-      shake = Math.max(shake, reduceMotion ? 0 : 0.3); sfx.splashBig();
-    }
-  } else { b.vy *= Math.exp(-1.5 * dt); b.vx *= Math.exp(-0.5 * dt); b.x += b.vx * dt; b.y += b.vy * dt; b.alpha -= dt * 0.55; if (b.alpha <= 0) breach = null; }
+  b.t += dt; if (b.ring >= 0) b.ring += dt;
+  if (b.state === 'shadow') {
+    // dark shape rising from the deep: bubbles and an upwelling at the surface
+    if (Math.random() < 0.6) parts.push({ type: 'bubble', x: b.x + rand(-0.12, 0.12) * b.L, y: waterY + rand(30, 90) * FS, vx: rand(-10, 10) * FS, vy: -rand(40, 90) * FS, r: rand(1.5, 4) * FS, life: 1.2, max: 1.2, seed: rand(0, 6) });
+    if (b.t > 1.1) { b.state = 'rise'; b.t = 0; }
+  } else if (b.state === 'rise') {
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    const n = breachNose(b);
+    if (!b.broke && n.y < surf(n.x)) { b.broke = true; splash(n.x, surf(n.x), 40, 1.9); for (let i = 0; i < 8; i++) parts.push({ type: 'mist', x: n.x + rand(-20, 20) * FS, y: surf(n.x) - rand(0, 30) * FS, vx: rand(-30, 30) * FS, vy: -rand(30, 70) * FS, r: rand(10, 22) * FS, life: 1.6, max: 1.6 }); }
+    if (b.broke) breachSheet(b, 7);
+    if (b.y < surf(b.x)) { b.state = 'air'; b.ta = 0; splash(b.x, surf(b.x), 30, 1.6); }
+  } else if (b.state === 'air') {
+    b.ta += dt; b.vy += GRAV * dt; b.x += b.vx * dt; b.y += b.vy * dt;
+    const p = clamp(b.ta / b.tAir, 0, 1), e = p * p * (3 - 2 * p);
+    b.ang = -1.3 - 1.3 * e;                    // rises nose-up, then tips back
+    b.twist = 1 - 0.28 * Math.sin(Math.PI * p); // rolls to show its belly
+    breachSheet(b, p < 0.6 ? 9 : 4);
+    if (b.vy > 0 && b.y > surf(b.x)) { b.state = 'dive'; b.t = 0; breachImpact(b); }
+  } else {
+    // roll back upright under the surface and swim away
+    const ty = waterY + (H - waterY) * 0.38;
+    b.vx = lerp(b.vx, -95 * FS, 1 - Math.exp(-1.2 * dt));
+    b.vy = lerp(b.vy, (ty - b.y) * 1.2, 1 - Math.exp(-2 * dt));
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    let head = Math.atan2(b.vy, b.vx); if (head > 0) head -= TAU;
+    b.ang = lerp(b.ang, head, 1 - Math.exp(-1.8 * dt));
+    b.twist = lerp(b.twist, -1, 1 - Math.exp(-1.6 * dt));
+    if (b.x < -b.L * 0.6) breach = null;
+  }
 }
 function updateSpout(dt) {
   spoutT -= dt;
@@ -424,7 +497,10 @@ function updateSpout(dt) {
 function minePose() { const sw = Math.sin(T * 1.6) * 0.08 - boat.ang * 0.8, d = CHAIN + MINE_R; return { x: HANG.x + Math.sin(sw) * d, y: HANG.y + Math.cos(sw) * d, sw }; }
 function dropMine() {
   const pose = minePose(), p = toWorld(pose.x, pose.y);
-  mine = { x: p.x, y: p.y, vx: 40 * S, vy: 0, R: MINE_R * S, rot: boat.ang - pose.sw, state: 'air', t: 0, phase: 0, light: 0, cd: 1.9, heat: 0 };
+  // lob it in an arc so it splashes down in the middle of the sea
+  const tx = W * 0.5, ty = lerp(waterY, bedY(tx), 0.58), vy0 = -H * 0.75, drop = Math.max(10, surf(tx) - p.y);
+  const tf = (-vy0 + Math.sqrt(vy0 * vy0 + 2 * GRAV * drop)) / GRAV;
+  mine = { x: p.x, y: p.y, vx: (tx - p.x) / tf, vy: vy0, tx, ty, R: MINE_R * S, rot: boat.ang - pose.sw, state: 'air', t: 0, phase: 0, light: 0, cd: 1.9, heat: 0 };
   boat.alarm = 2.2; sfx.clank(); sfx.siren();
 }
 function updateMine(dt) {
@@ -443,13 +519,13 @@ function updateMine(dt) {
   if (m.state === 'air') {
     m.vy += GRAV * dt; m.x += m.vx * dt; m.y += m.vy * dt; m.rot += 1.5 * dt;
     const sy = surf(m.x);
-    if (m.vy > 0 && m.y > sy) { m.state = 'sink'; splash(m.x, sy, 28, 1.5); parts.push({ type: 'foam', x: m.x, w: 34 * S, life: 2, max: 2, vx: 0 }); sfx.splash(0.3); m.vx *= 0.3; m.vy = H * 0.3; }
+    if (m.vy > 0 && m.y > sy) { m.state = 'sink'; splash(m.x, sy, 28, 1.5); parts.push({ type: 'foam', x: m.x, w: 34 * S, life: 2, max: 2, vx: 0 }); sfx.splash(0.3); m.vx *= 0.25; m.vy = H * 0.25; }
   } else if (m.state === 'sink') {
     m.vy = Math.min(m.vy + H * 0.9 * dt, H * 0.55);
-    m.vx += ((boat.x - 10 * S - m.x) * 2.5 - m.vx) * Math.min(1, dt * 3);
+    m.vx += ((m.tx - m.x) * 2.5 - m.vx) * Math.min(1, dt * 3);
     m.x += m.vx * dt; m.y += m.vy * dt; m.rot += 0.8 * dt;
     if (Math.random() < 0.7) parts.push({ type: 'bubble', x: m.x + rand(-8, 8) * S, y: m.y - m.R, vx: 0, vy: -40 * S, r: rand(1.5, 3.5) * FS, life: 2, max: 2, seed: rand(0, 6) });
-    if (m.y >= deepY) { m.y = deepY; m.state = 'armed'; m.t = 0; }
+    if (m.y >= m.ty) { m.y = m.ty; m.state = 'armed'; m.t = 0; }
   } else if (m.state === 'armed') {
     m.x += Math.sin(T * 60) * 0.6 * S;
     for (let k = 0; k < 3; k++) {
@@ -461,10 +537,13 @@ function updateMine(dt) {
 }
 function explode(x, y) {
   flash = 1; shake = reduceMotion ? 0 : 1.1;
-  blast = { x, y, t: 0 }; bump = { x, t: 0 };
+  const blobs = []; for (let i = 0; i < 80; i++) blobs.push({ u: Math.pow(Math.random(), 0.75), off: rand(-1, 1), r: rand(0.6, 1.25), sd: rand(0, TAU), jet: i < 18 ? (i % 2 ? -1 : 1) * rand(0.35, 0.9) : 0 });
+  const crown = []; for (let i = 0; i < 16; i++) crown.push({ off: (i / 15) * 2 - 1 + rand(-0.04, 0.04), h: rand(0.55, 1.2), w: rand(0.7, 1.3) });
+  blast = { x, y, t: 0, blobs, crown }; bump = { x, t: 0 };
   rings.push({ x, y, r: 10 * S, v: 720 * S, life: 1, delay: 0, w: 4 }, { x, y, r: 0, v: 540 * S, life: 1, delay: 0.08, w: 3 }, { x, y, r: 0, v: 400 * S, life: 1, delay: 0.2, w: 2 }, { x, y, r: 0, v: 300 * S, life: 1, delay: 0.32, w: 6, dark: true });
-  for (let i = 0; i < 140; i++) { const a = rand(0, TAU), sp = rand(60, 520) * S; parts.push({ type: 'bubble', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rand(2, 10) * FS, life: rand(2, 3.8), max: 3.8, seed: rand(0, 6) }); }
-  for (let i = 0; i < 22; i++) { const a = rand(0, TAU), sp = rand(160, 460) * S; parts.push({ type: 'debris', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, rot: rand(0, TAU), vr: rand(-8, 8), r: rand(3, 8) * S, life: 2.8, max: 2.8 }); }
+  for (let i = 0; i < 30; i++) { const side = Math.random() < 0.5 ? -1 : 1, sx = x + side * rand(10, 120) * S; parts.push({ type: 'silt', x: sx, y: bedY(sx) - rand(0, 12) * FS, vx: side * rand(60, 240) * S, vy: -rand(20, 110) * S, r: rand(10, 26) * FS, life: rand(2.6, 4.2), max: 4.2 }); }
+  for (let i = 0; i < 80; i++) { const a = rand(0, TAU), sp = rand(60, 520) * S; parts.push({ type: 'bubble', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rand(2, 10) * FS, life: rand(2, 3.8), max: 3.8, seed: rand(0, 6) }); }
+  for (let i = 0; i < 22; i++) { const a = rand(0, TAU), sp = rand(160, 460) * S; parts.push({ type: 'debris', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, rot: rand(0, TAU), vr: rand(-8, 8), r: rand(3, 8) * S, life: 2.8, max: 2.8, c: pick(['#5b4a3c', '#6d6f6a', '#3e4a50', '#8a6b4f', '#c4756a']) }); }
   for (let i = 0; i < 40; i++) { const a = rand(0, TAU), sp = rand(120, 520) * S; parts.push({ type: 'ember', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rand(1.5, 3.5) * S, life: rand(0.8, 1.6), max: 1.6 }); }
   setTimeout(() => {
     if (!blast) return;
@@ -472,16 +551,16 @@ function explode(x, y) {
     for (let i = 0; i < 18; i++) parts.push({ type: 'mist', x: x + rand(-60, 60) * S, y: surf(x) - rand(40, H * 0.4), vx: rand(-30, 30) * S, vy: -rand(10, 40) * S, r: rand(16, 34) * S, life: 2.6, max: 2.6 });
   }, 150);
   for (let i = 0; i < 10; i++) parts.push({ type: 'foam', x: x + rand(-160, 160) * S, w: rand(24, 54) * S, life: 3, max: 3, vx: rand(-24, 24) * S });
-  boat.liftV = -H * 0.55; boat.rock = 0.36; boat.alarm = 2.5;
-  for (const f of fishes) if (f.state === 'jump' || f.state === 'sub') panic(f, rand(0, 0.15));
+  boat.liftV = -H * 0.3; boat.rock = 0.24; boat.alarm = 2.5;
+  for (const f of fishes) if (f.state === 'jump' || f.state === 'sub') panic(f, rand(0, 0.5));
   for (const m of sardines) { const f = makeFish('sardine', m.x, m.y); f.s = m.s * 1.3; panic(f, Math.min(0.4, Math.abs(m.x - x) / (W * 1.5))); fishes.push(f); }
   sardines = [];
   for (let i = 0; i < 20; i++) {
-    const dir = Math.random() < 0.85 ? -1 : 1;
-    const f = makeFish(pickKind(game.crashAt), dir < 0 ? boat.x - rand(230, 380) * S : boat.x + rand(205, 240) * S, y + rand(-70, 30) * S);
-    f.vx = dir * rand(100, 300) * FS; f.vy = -rand(150, 450) * FS; panic(f, rand(0, 0.25), dir); fishes.push(f);
+    const dir = Math.random() < 0.5 ? -1 : 1;
+    const f = makeFish(pickKind(game.crashAt), x + dir * rand(20, 280) * S, y + rand(-90, 40) * S);
+    f.vx = dir * rand(100, 300) * FS; f.vy = -rand(150, 450) * FS; panic(f, 0.15 + i * 0.09 + rand(0, 0.12), dir); f.speed *= rand(0.55, 1.15); f.kick *= rand(0.7, 1.25); f.alpha = 0; f.fadeIn = true; fishes.push(f);
   }
-  for (const sh of sharks) if (sh.state === 'patrol') { sh.state = 'flee'; sh.dir = sh.x < boat.x ? -1 : 1; }
+  for (const sh of sharks) if (sh.state === 'patrol') { sh.state = 'flee'; sh.dir = sh.x < x ? -1 : 1; }
   for (const d of dolphins) d.vx *= 1.6;
   deepWhale.flee = true; deepWhale.dir = deepWhale.x < boat.x ? -1 : 1; deepWhale.wait = 0;
   turtle.vx = (turtle.x < x ? -1 : 1) * 160;
@@ -517,6 +596,7 @@ function updateParts(dt) {
       case 'text': p.y -= 38 * FS * dt; break;
       case 'smoke': p.x += p.vx * dt; p.y += p.vy * dt; p.r += 7 * S * dt; p.vx -= 4 * S * dt; break;
       case 'mist': p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 30 * FS * dt; p.r += 6 * FS * dt; break;
+      case 'silt': p.vx *= Math.exp(-1.3 * dt); p.vy = p.vy * Math.exp(-1.6 * dt) + 5 * FS * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.r += 9 * FS * dt; break;
       case 'ink': p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= Math.exp(-dt); p.vy *= Math.exp(-dt); p.r += 10 * FS * dt; break;
       case 'suck': { const k = 1 - p.life / p.max; p.x = lerp(p.x, p.cx, k * 0.25); p.y = lerp(p.y, p.cy, k * 0.25); break; }
       case 'foam': p.x += p.vx * dt; break;
@@ -530,6 +610,10 @@ function updateParts(dt) {
     if (r.delay > 0) { r.delay -= dt; continue; }
     r.r += r.v * dt; r.life -= dt * 0.9; if (r.life <= 0) rings.splice(i, 1);
   }
-  if (blast) { blast.t += dt; if (blast.t > 4.2) blast = null; }
+  if (blast) {
+    blast.t += dt;
+    if (blast.t > 0.3 && blast.t < 1.8 && Math.random() < 0.85) parts.push({ type: 'bubble', x: blast.x + rand(-24, 24) * S, y: blast.y - rand(0, 30) * S, vx: rand(-15, 15) * FS, vy: -rand(90, 220) * FS, r: rand(2, 7) * FS, life: 2.4, max: 2.4, seed: rand(0, 6) });
+    if (blast.t > 4.2) blast = null;
+  }
   if (bump) { bump.t += dt; if (bump.t > 1.5) bump = null; }
 }

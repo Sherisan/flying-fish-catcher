@@ -21,7 +21,6 @@ const RATE = 0.085, WAIT = 6, START_BAL = 1000, KEY = 'flying-fish-catcher-v2', 
 const MILESTONES = [
   { at: 2, text: 'Sharks circling', ev: 'shark' },
   { at: 3, text: 'Dolphin pod', ev: 'dolphins' },
-  { at: 4, text: 'Whale breach', ev: 'whale' },
   { at: 6, text: 'Orca pod', ev: 'orcas' },
   { at: 8, text: 'Sailfish frenzy' },
   { at: 15, text: 'Golden waters' },
@@ -118,7 +117,7 @@ const CONSOLE = { x: 146 }; CONSOLE.y = deckY(CONSOLE.x);
 const ROOF_Y = -170;
 const ROD = { x: 14, butt: { x: 4, y: ROOF_Y - 29 }, len: 112 };
 const HANG = { x: 228, y: -152 };
-const CHAIN = 34, MINE_R = 28, MUZZLE = 64, HANDLE = 30, CK = 1.1;
+const CHAIN = 34, MINE_R = 28, MUZZLE = 64, HANDLE = 30, CK = 1.22;
 
 /* ================= game state ================= */
 const game = { phase: 'waiting', t: 0, mult: 1, crashAt: 1, haul: 0, round: 1000 + ((Math.random() * 9000) | 0), mile: 0, msg: '', msgT: 0, catches: {}, rounds: 0 };

@@ -19,8 +19,7 @@ function toWaiting() {
   makeBots();
   if (!sardines.length) spawnSardines(true);
   for (const s of slots) { if (s.queued || s.autoBet.checked) { s.queued = false; placeBet(s); } }
-  if (Math.random() < 0.25) setTimeout(() => { if (game.phase === 'waiting') whaleBreach(); }, 2200);
-  else if (Math.random() < 0.35) setTimeout(() => { if (game.phase === 'waiting') (Math.random() < 0.5 ? orcaPod : dolphinPod)(); }, 1800);
+  if (Math.random() < 0.35) setTimeout(() => { if (game.phase === 'waiting') (Math.random() < 0.5 ? orcaPod : dolphinPod)(); }, 1800);
   renderBalance(); listDirty = true;
   announce('Bets are open for the next round.');
 }

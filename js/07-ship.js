@@ -73,6 +73,9 @@ function drawCrane() {
   ctx.strokeStyle = '#e8b52c'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(178, -106); ctx.lineTo(194, -106); ctx.stroke();
   ctx.strokeStyle = '#9aa5ae'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(188, deckY(188)); ctx.lineTo(200, -120); ctx.stroke();
   ctx.fillStyle = '#2b3138'; circle(HANG.x, HANG.y, 5.5); ctx.fill(); ctx.fillStyle = '#9aa5ae'; circle(HANG.x, HANG.y, 2); ctx.fill();
+  const wy = deckY(165) - 9; ctx.fillStyle = '#3a4048'; rr(157, wy - 8, 18, 16, 3); ctx.fill(); ctx.fillStyle = '#c0c8ce'; circle(166, wy, 6); ctx.fill();
+  ctx.strokeStyle = '#6b737a'; ctx.lineWidth = 1; for (let k = -4; k <= 4; k += 2) { ctx.beginPath(); ctx.moveTo(166 + k, wy - 6); ctx.lineTo(166 + k, wy + 6); ctx.stroke(); }
+  ctx.fillStyle = '#2b3138'; circle(166, wy, 2); ctx.fill(); ctx.strokeStyle = '#9aa5ae'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(166, wy - 6); ctx.lineTo(ap[0], ap[1]); ctx.stroke();
   const on = game.phase === 'crashed' ? Math.sin(T * 14) > 0 : Math.sin(T * 3) > 0.7;
   ctx.fillStyle = on ? '#ffb020' : '#7a5410'; circle(ap[0], ap[1] - 6, 3); ctx.fill();
   if (on) additive(() => glow(ap[0], ap[1] - 6, 18, 'rgba(255,170,40,0.6)'));
@@ -94,6 +97,7 @@ function drawSuperstructure(cs) {
   ctx.fillStyle = '#d2ac67'; circle(8, -92, 4.5); ctx.fill(); ctx.fillStyle = '#ffd690'; circle(8, -92, 3); ctx.fill();
   for (const x of [28, 54, 80]) { ctx.fillStyle = lin(0, -104, 0, -88, [[0, '#ffe2a2'], [1, '#ffab5e']]); rr(x, -104, 20, 15, 2); ctx.fill(); ctx.strokeStyle = '#2a2622'; ctx.lineWidth = 1.5; ctx.stroke(); }
   if (TH.lights > 0.4) additive(() => { for (const x of [38, 64, 90]) glow(x, -96, 22, `rgba(255,190,110,${0.18 * TH.lights})`); });
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath(); for (const x of [28, 54, 80]) { ctx.moveTo(x + 4, -91); ctx.lineTo(x + 9, -102); ctx.moveTo(x + 9, -91); ctx.lineTo(x + 11, -95); } ctx.stroke();
   ctx.fillStyle = '#ff7a2f'; ctx.fillRect(-11, -118, 125, 3);
   ctx.fillStyle = 'rgba(0,0,0,0.06)'; for (let x = 0; x < 110; x += 14) ctx.fillRect(x, -84, 1, 36);
   ctx.fillStyle = '#d9d2c2'; poly([[-32, -119], [-4, -119], [-4, -114], [-32, -114]]); ctx.fill(); ctx.strokeStyle = '#2a2622'; ctx.lineWidth = 1.2; ctx.stroke();
@@ -131,6 +135,15 @@ function drawSuperstructure(cs) {
   ctx.fillStyle = '#3a3f45'; rr(-8, ROOF_Y - 3, 10, 3, 1); ctx.fill();
   ctx.fillStyle = on ? '#ff3b30' : '#7a2420'; ctx.beginPath(); ctx.arc(-3, ROOF_Y - 3, 4.5, Math.PI, 0); ctx.fill();
   if (on) additive(() => glow(-3, ROOF_Y - 5, 46 + 20 * Math.sin(T * 12), 'rgba(255,50,40,0.6)'));
+  // life ring on the deckhouse wall
+  ctx.strokeStyle = '#2a2622'; ctx.lineWidth = 6.5; circle(100, -66, 8); ctx.stroke();
+  ctx.lineWidth = 5; for (let k = 0; k < 4; k++) { ctx.strokeStyle = k % 2 ? '#f4efe4' : '#ff6a1f'; ctx.beginPath(); ctx.arc(100, -66, 8, k * Math.PI / 2, (k + 1) * Math.PI / 2); ctx.stroke(); }
+  ctx.strokeStyle = '#cdb27c'; ctx.lineWidth = 1; for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 4; ctx.beginPath(); ctx.arc(100, -66, 8, a - 0.25, a + 0.25); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.arc(100, -66, 8, Math.PI * 1.15, Math.PI * 1.45); ctx.lineWidth = 1.6; ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.stroke();
+  // roof railing and radio antenna
+  ctx.strokeStyle = 'rgba(225,232,236,0.9)'; ctx.lineWidth = 1.3; ctx.beginPath(); for (let x = 70; x <= 110; x += 10) { ctx.moveTo(x, ROOF_Y); ctx.lineTo(x, ROOF_Y - 11); } ctx.moveTo(70, ROOF_Y - 11); ctx.lineTo(110, ROOF_Y - 11); ctx.stroke();
+  ctx.strokeStyle = '#c9d1d6'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(106, ROOF_Y - 11); ctx.quadraticCurveTo(107 + Math.sin(T * 2) * 1.5, ROOF_Y - 40, 109 + Math.sin(T * 2) * 3, ROOF_Y - 62); ctx.stroke();
+  const blink = Math.sin(T * 4) > 0.3; ctx.fillStyle = blink ? '#ff4a4a' : '#7a2420'; circle(109 + Math.sin(T * 2) * 3, ROOF_Y - 63, 1.8); ctx.fill(); if (blink) additive(() => glow(109 + Math.sin(T * 2) * 3, ROOF_Y - 63, 9, 'rgba(255,70,70,0.6)'));
 }
 function drawMast() {
   ctx.strokeStyle = '#e7ecef'; ctx.lineWidth = 3; ctx.lineCap = 'round';
@@ -165,6 +178,8 @@ function drawRodGear() {
   ctx.strokeStyle = '#b98a55'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(ROD.butt.x, ROD.butt.y); ctx.lineTo(ROD.butt.x + Math.cos(a) * 16, ROD.butt.y + Math.sin(a) * 16); ctx.stroke();
   ctx.fillStyle = '#9aa6b0'; circle(ROD.butt.x + Math.cos(a) * 10 + 2, ROD.butt.y + Math.sin(a) * 10 + 4, 3.8); ctx.fill();
   ctx.strokeStyle = '#2b3138'; ctx.lineWidth = 1; ctx.stroke();
+  const rx = ROD.butt.x + Math.cos(a) * 10 + 2, ry = ROD.butt.y + Math.sin(a) * 10 + 4, ra = T * (rod.state === 'reel' ? 14 : 0); ctx.strokeStyle = '#2b3138'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + Math.cos(ra) * 5, ry + Math.sin(ra) * 5); ctx.stroke(); ctx.fillStyle = '#d2ac67'; circle(rx + Math.cos(ra) * 5, ry + Math.sin(ra) * 5, 1.3); ctx.fill();
+  ctx.strokeStyle = '#c9d1d6'; ctx.lineWidth = 0.9; for (const u of [0.3, 0.52, 0.72, 0.88]) { const q = 1 - u, gx = q * q * ROD.butt.x + 2 * q * u * cx + u * u * tl.x, gy = q * q * ROD.butt.y + 2 * q * u * cy + u * u * tl.y; circle(gx, gy + 1.6, 1.3 - u * 0.5); ctx.stroke(); }
 }
 function drawDeckGear() {
   const cx = CRATE.x, cy = CRATE.y;
@@ -329,6 +344,9 @@ function drawCannon() {
   ctx.fillStyle = lin(0, -9, 0, 9, [[0, '#8b98a3'], [0.45, '#4b5762'], [1, '#1f262c']]); rr(-22, -8.5, 36, 17, 6); ctx.fill();
   ctx.fillStyle = lin(0, -5, 0, 5, [[0, '#9aa6b0'], [0.5, '#56636e'], [1, '#252d34']]); ctx.fillRect(12, -5, 46, 10); rr(55, -7, 9, 14, 2); ctx.fill();
   ctx.fillStyle = '#d2ac67'; ctx.fillRect(-2, -8.5, 3, 17); ctx.fillRect(34, -5, 2.5, 10);
+  ctx.fillStyle = '#1c2227'; rr(14, -11, 18, 5, 2); ctx.fill(); ctx.fillRect(18, -7, 2, 2.5); ctx.fillRect(26, -7, 2, 2.5); ctx.fillStyle = '#7fd3ff'; circle(32, -8.5, 1.6); ctx.fill();
+  ctx.fillStyle = '#14181c'; for (const yy of [-5, 1.5]) ctx.fillRect(57, yy, 5, 3.5);
+  ctx.strokeStyle = '#1c2227'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(-14, -8); ctx.quadraticCurveTo(-20, -18, -10, -22); ctx.stroke();
   ctx.strokeStyle = '#1c2227'; ctx.lineWidth = 3; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(-22, 0); ctx.lineTo(-HANDLE, 0); ctx.moveTo(-HANDLE, -7); ctx.lineTo(-HANDLE, 7); ctx.stroke();
   ctx.fillStyle = '#2a3238'; circle(0, 0, 5); ctx.fill(); ctx.fillStyle = '#d2ac67'; circle(0, 0, 2); ctx.fill();
@@ -352,7 +370,8 @@ function drawRope(a) {
   ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.quadraticCurveTo((m.x + tx) / 2, (m.y + ty) / 2 + sag, tx, ty); ctx.stroke();
 }
 function drawRodLine() {
-  const tl = rodTipLocal(), tip = toWorld(tl.x, tl.y), end = rod.fish ? { x: rod.fish.x, y: rod.fish.y - rod.fish.s * 0.9 } : rod.bob;
+  const tl = rodTipLocal(), tip = toWorld(tl.x, tl.y), rf = rod.fish;
+  const end = rf ? (rf.hang ? { x: rf.x, y: rf.y - rf.s * 0.9 } : { x: rf.x + Math.cos(Math.atan2(rf.vy || 0, rf.vx || 1)) * rf.s * 0.9, y: rf.y + Math.sin(Math.atan2(rf.vy || 0, rf.vx || 1)) * rf.s * 0.9 }) : rod.bob;
   if (!end) return;
   const d = Math.hypot(end.x - tip.x, end.y - tip.y), sag = rod.state === 'wait' ? d * 0.12 : d * 0.03;
   ctx.strokeStyle = 'rgba(235,240,245,0.7)'; ctx.lineWidth = 1;

@@ -39,11 +39,12 @@ function drawParts(layer) {
       case 'spark': ctx.globalAlpha = a; additive(() => { ctx.fillStyle = p.c; circle(p.x, p.y, p.r); ctx.fill(); }); ctx.globalAlpha = 1; break;
       case 'ember': additive(() => { glow(p.x, p.y, p.r * 4, `rgba(255,${(120 + a * 100) | 0},50,${a * 0.7})`); ctx.fillStyle = `rgba(255,240,200,${a})`; circle(p.x, p.y, p.r * 0.6); ctx.fill(); }); break;
       case 'mist': ctx.fillStyle = `rgba(240,248,255,${a * 0.35})`; circle(p.x, p.y, p.r); ctx.fill(); break;
+      case 'silt': ctx.fillStyle = `rgba(120,104,78,${a * 0.32})`; circle(p.x, p.y, p.r); ctx.fill(); ctx.fillStyle = `rgba(170,150,115,${a * 0.18})`; circle(p.x - p.r * 0.3, p.y - p.r * 0.3, p.r * 0.6); ctx.fill(); break;
       case 'ink': ctx.fillStyle = `rgba(30,12,40,${a * 0.45})`; circle(p.x, p.y, p.r); ctx.fill(); break;
       case 'foam': { const y = surf(p.x); ctx.fillStyle = TH.bio > 0.5 ? `rgba(140,255,230,${a * 0.6})` : `rgba(240,250,255,${a * 0.55})`; ctx.beginPath(); ctx.ellipse(p.x, y + 1, p.w * (1.2 - a * 0.4), 2.2 * FS, 0, 0, TAU); ctx.fill(); break; }
       case 'debris':
         ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.globalAlpha = a;
-        ctx.fillStyle = '#1d2329'; poly([[-p.r, -p.r * 0.4], [p.r * 0.6, -p.r * 0.7], [p.r, p.r * 0.3], [-p.r * 0.3, p.r * 0.6]]); ctx.fill();
+        ctx.fillStyle = p.c || '#1d2329'; poly([[-p.r, -p.r * 0.4], [p.r * 0.6, -p.r * 0.7], [p.r, p.r * 0.3], [-p.r * 0.3, p.r * 0.6]]); ctx.fill();
         ctx.fillStyle = '#f2c230'; ctx.fillRect(-p.r * 0.3, -p.r * 0.2, p.r * 0.6, p.r * 0.25);
         ctx.restore(); ctx.globalAlpha = 1; break;
       case 'text':
@@ -53,36 +54,87 @@ function drawParts(layer) {
   }
 }
 function drawPlume(t) {
-  const t0 = t - 0.15; if (t0 <= 0 || t0 > 2.4) return;
-  const rise = t0 < 0.45 ? ease(t0 / 0.45) : 1, fall = t0 > 0.8 ? clamp((t0 - 0.8) / 1.4, 0, 1) : 0;
-  const h = H * 0.62 * rise * (1 - fall * 0.9), x = blast.x, base = surf(x) + 4, al = 1 - fall;
-  const wB = 70 * S * (1 + fall * 0.8), wT = 150 * S * (0.5 + rise * 0.6 + fall * 1.2);
-  ctx.fillStyle = lin(0, base, 0, base - h, [[0, `rgba(240,250,255,${0.92 * al})`], [0.6, `rgba(230,245,255,${0.6 * al})`], [1, 'rgba(230,245,255,0)']]);
-  ctx.beginPath(); ctx.moveTo(x - wB / 2, base);
-  ctx.bezierCurveTo(x - wB * 0.35, base - h * 0.45, x - wT * 0.45, base - h * 0.75, x - wT / 2, base - h);
-  for (let k = 0; k <= 9; k++) ctx.lineTo(x - wT / 2 + wT * k / 9, base - h - (k % 2 ? 24 : 4) * S * rise * (1 - fall));
-  ctx.bezierCurveTo(x + wT * 0.45, base - h * 0.75, x + wB * 0.35, base - h * 0.45, x + wB / 2, base);
-  ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = `rgba(255,255,255,${0.5 * al})`; ctx.lineWidth = 3 * S;
-  for (let k = -2; k <= 2; k++) { ctx.beginPath(); ctx.moveTo(x + k * wB * 0.15, base); ctx.quadraticCurveTo(x + k * wB * 0.25, base - h * 0.5, x + k * wT * 0.2, base - h * 0.95); ctx.stroke(); }
-  ctx.fillStyle = `rgba(240,250,255,${0.75 * al})`; ctx.beginPath(); ctx.ellipse(x, base, wB * (1 + rise), 14 * S * rise, 0, Math.PI, TAU); ctx.fill();
+  const t0 = t - 0.12; if (t0 <= 0 || t0 > 3.2 || !blast.blobs) return;
+  const rise = t0 < 0.55 ? ease(t0 / 0.55) : 1, fall = t0 > 0.7 ? clamp((t0 - 0.7) / 1.5, 0, 1) : 0, al = 1 - fall;
+  const x = blast.x, base = surf(x) + 4, Hc = H * 0.44;
+  // water dome bulging up before the column bursts through
+  if (t0 < 0.5) { const k = ease(Math.min(1, t0 / 0.25)), q = 1 - clamp((t0 - 0.25) / 0.25, 0, 1); ctx.fillStyle = lin(0, base - 70 * S, 0, base, [[0, `rgba(250,253,255,${0.9 * q})`], [1, `rgba(170,215,235,${0.8 * q})`]]); ctx.beginPath(); ctx.ellipse(x, base, (60 + 50 * k) * S, 70 * S * k, 0, Math.PI, TAU); ctx.fill(); }
+  // crown of water spikes thrown up around the base
+  if (blast.crown && t0 < 1.2) {
+    const cr = ease(Math.min(1, t0 / 0.28)), cd = clamp((t0 - 0.45) / 0.75, 0, 1), ca = 1 - cd;
+    for (const c of blast.crown) {
+      const bx = x + c.off * (50 + 45 * cr) * S, h = c.h * 95 * S * cr * (1 - cd * cd), tilt = c.off * 0.65, tx = bx + Math.sin(tilt) * h, ty = base - Math.cos(tilt) * h, hw = 6 * S * c.w;
+      ctx.fillStyle = lin(0, base, 0, ty, [[0, `rgba(170,215,235,${0.85 * ca})`], [1, `rgba(250,253,255,${0.95 * ca})`]]);
+      ctx.beginPath(); ctx.moveTo(bx - hw, base); ctx.quadraticCurveTo(bx + Math.sin(tilt) * h * 0.45 - hw * 0.3, base - h * 0.55, tx, ty); ctx.quadraticCurveTo(bx + Math.sin(tilt) * h * 0.45 + hw * 0.5, base - h * 0.5, bx + hw, base); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = `rgba(255,255,255,${ca})`; circle(tx + Math.sin(tilt) * 4 * S, ty - 4 * S, 3.2 * S * c.w); ctx.fill();
+    }
+  }
+  const pts = [];
+  for (const o of blast.blobs) {
+    let bx, by, rr;
+    if (!o.jet) {
+      const hu = o.u * Hc * rise * (1 - fall * fall * (3 - 2 * fall)), w = (24 + 80 * o.u + 110 * fall * o.u) * S;
+      bx = x + o.off * w + Math.sin(T * 1.7 + o.sd) * 5 * S; by = base - hu; rr = (12 + 28 * o.u) * S * o.r * (0.55 + 0.45 * rise) * (1 + fall * 0.9);
+    } else {
+      const d = o.u * Hc * 0.75 * rise, g = fall * fall * Hc * 0.9 * o.u;
+      bx = x + Math.sin(o.jet) * d * 1.25 + Math.sin(o.jet) * fall * 120 * S; by = base - Math.cos(o.jet) * d + g; rr = (3 + 7 * o.u) * S * o.r;
+    }
+    if (by < base + rr * 0.3) pts.push([bx, Math.min(by, base), rr, o.u]);
+  }
+  ctx.fillStyle = `rgba(120,165,195,${0.55 * al})`; for (const [px, py, pr] of pts) { circle(px + pr * 0.22, py + pr * 0.25, pr); ctx.fill(); }
+  for (const [px, py, pr, u] of pts) { const k = clamp((base - py) / (Hc * 0.35), 0, 1); ctx.fillStyle = `rgba(${(190 + 52 * k) | 0},${(226 + 22 * k) | 0},${(240 + 12 * k) | 0},${0.9 * al})`; circle(px, py, pr * 0.92); ctx.fill(); }
+  if (fall > 0.05) { ctx.strokeStyle = `rgba(225,242,252,${0.5 * al})`; ctx.lineWidth = 1.6 * S; ctx.lineCap = 'round'; for (const [px, py, pr, u] of pts) if (u > 0.45) { ctx.beginPath(); ctx.moveTo(px, py + pr * 0.6); ctx.lineTo(px + Math.sin(px) * 3 * S, py + pr + fall * 70 * S * u); ctx.stroke(); } }
+  ctx.fillStyle = `rgba(255,255,255,${0.85 * al})`; for (const [px, py, pr] of pts) { circle(px - pr * 0.3, py - pr * 0.32, pr * 0.38); ctx.fill(); }
+  // churning white-water skirt where the column meets the sea
+  const sw = (70 + 90 * rise + 260 * fall) * S;
+  ctx.fillStyle = `rgba(245,250,255,${0.85 * (1 - fall * 0.7)})`; ctx.beginPath(); ctx.ellipse(x, base, sw, (10 + 10 * rise) * S, 0, Math.PI, TAU); ctx.fill();
+  ctx.fillStyle = `rgba(200,232,245,${0.6 * (1 - fall)})`; for (let k = -4; k <= 4; k++) { circle(x + k * sw * 0.22, base - 4 * S, (9 + (k & 1) * 6) * S * (0.6 + rise * 0.4)); ctx.fill(); }
 }
 function drawBlast() {
   const b = blast, t = b.t;
   if (t < 1.3) additive(() => { ctx.save(); surfPath(); ctx.clip(); ctx.fillStyle = `rgba(255,170,90,${0.4 * Math.max(0, 1 - t / 1.3)})`; ctx.fillRect(0, waterY - 20, W, H); ctx.restore(); });
-  if (t < 1.3) {
+  if (t < 1.4) {
     let r;
-    if (t < 0.35) r = ease(t / 0.35) * 120; else if (t < 0.7) r = lerp(120, 48, ease((t - 0.35) / 0.35)); else if (t < 0.95) r = lerp(48, 80, ease((t - 0.7) / 0.25)); else r = lerp(80, 20, (t - 0.95) / 0.35);
-    r *= S; const al = t < 0.95 ? 1 : 1 - (t - 0.95) / 0.35;
+    if (t < 0.35) r = ease(t / 0.35) * 130; else if (t < 0.7) r = lerp(130, 52, ease((t - 0.35) / 0.35)); else if (t < 0.95) r = lerp(52, 86, ease((t - 0.7) / 0.25)); else r = lerp(86, 16, clamp((t - 0.95) / 0.45, 0, 1));
+    r *= S; const al = t < 0.95 ? 1 : 1 - clamp((t - 0.95) / 0.45, 0, 1), heat = clamp(1 - t / 0.6, 0, 1);
     if (r > 1) {
-      const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r);
-      g.addColorStop(0, `rgba(255,255,240,${0.95 * al})`); g.addColorStop(0.35, `rgba(255,205,110,${0.75 * al})`); g.addColorStop(0.72, `rgba(255,110,50,${0.4 * al})`); g.addColorStop(0.92, `rgba(255,240,220,${0.55 * al})`); g.addColorStop(1, 'rgba(255,255,255,0)');
-      additive(() => { ctx.fillStyle = g; circle(b.x, b.y, r); ctx.fill(); });
+      // wobbling gas bubble: dark cavity, fiery core, swirling flames and a bright skin
+      const wob = (rad) => { ctx.beginPath(); for (let k = 0; k <= 40; k++) { const q = k / 40 * TAU, w = 1 + 0.06 * Math.sin(q * 5 + t * 14) + 0.035 * Math.sin(q * 9 - t * 22); const px = b.x + Math.cos(q) * rad * w, py = b.y + Math.sin(q) * rad * w * 0.94; if (k) ctx.lineTo(px, py); else ctx.moveTo(px, py); } ctx.closePath(); };
+      ctx.save(); surfPath(); ctx.clip();
+      wob(r); ctx.fillStyle = `rgba(6,26,40,${0.4 * al})`; ctx.fill();
+      additive(() => {
+        const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r * (0.55 + 0.4 * heat));
+        g.addColorStop(0, `rgba(255,255,236,${al * (0.45 + 0.55 * heat)})`); g.addColorStop(0.45, `rgba(255,180,80,${al * 0.7})`); g.addColorStop(1, 'rgba(255,80,30,0)');
+        ctx.fillStyle = g; wob(r); ctx.fill();
+        ctx.lineCap = 'round'; ctx.strokeStyle = `rgba(255,196,110,${al * (0.15 + 0.55 * heat)})`;
+        for (let k = 0; k < 6; k++) { const q0 = k * TAU / 6 + t * (k % 2 ? 3 : -2.4), rr0 = r * (0.3 + (k % 3) * 0.16); ctx.lineWidth = (2 + (k % 2) * 2) * S; ctx.beginPath(); ctx.arc(b.x, b.y, rr0, q0, q0 + 1.1); ctx.stroke(); }
+      });
+      wob(r * 1.05); ctx.strokeStyle = `rgba(120,200,235,${0.35 * al})`; ctx.lineWidth = 7 * S; ctx.stroke();
+      wob(r); ctx.strokeStyle = `rgba(235,250,255,${0.85 * al})`; ctx.lineWidth = 3 * S; ctx.stroke();
+      ctx.strokeStyle = `rgba(255,255,255,${0.9 * al})`; ctx.lineWidth = 3.2 * S; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(b.x, b.y, r * 0.8, Math.PI * 1.1, Math.PI * 1.42); ctx.stroke();
+      ctx.restore();
     }
   }
   if (t < 0.5) additive(() => glow(b.x, b.y, H * (0.25 + t * 1.3), `rgba(255,240,210,${0.9 * (1 - t / 0.5)})`));
   drawPlume(t);
   if (t > 0.2 && t < 3) { const k = (t - 0.2) / 2.8, rx = (60 + k * 400) * S; ctx.strokeStyle = `rgba(240,250,255,${0.65 * (1 - k)})`; ctx.lineWidth = 3 * S * (1 - k) + 1; ctx.beginPath(); ctx.ellipse(b.x, surf(b.x) + 1, rx, 4 * S, 0, 0, TAU); ctx.stroke(); }
+}
+function drawBreach(b) {
+  if (b.ring >= 0 && b.ring < 3) { const k = b.ring / 3; for (const [d, w] of [[0, 3], [0.25, 2]]) { const q = Math.max(0, k - d * 0.4); ctx.strokeStyle = `rgba(240,250,255,${0.6 * (1 - q)})`; ctx.lineWidth = w * FS * (1 - q) + 0.5; ctx.beginPath(); ctx.ellipse(b.x, surf(b.x) + 2, (b.L * 0.4 + q * 380 * FS) * (1 - d), (5 + q * 10) * FS, 0, 0, TAU); ctx.stroke(); } }
+  if (b.state === 'shadow') {
+    const k = clamp(b.t / 1.1, 0, 1), y = lerp(deepY, waterY + 40 * FS, k);
+    ctx.fillStyle = `rgba(6,16,28,${0.18 + 0.32 * k})`; ctx.beginPath(); ctx.ellipse(b.x, y, b.L * (0.12 + 0.1 * k), b.L * (0.05 + 0.05 * k), 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = `rgba(230,246,255,${0.5 * k})`; ctx.lineWidth = 2 * FS; ctx.beginPath(); ctx.ellipse(b.x, surf(b.x) + 2, b.L * 0.25 * k, 4 * FS * k, 0, 0, TAU); ctx.stroke();
+    return;
+  }
+  const body = () => { ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.ang); ctx.scale(1, b.twist); fishGeneric({ wig: 0, air: true, state: 'swim' }, b.s, D.whale, 0); ctx.restore(); };
+  breachFlap = b.state === 'air' ? -0.3 - 0.8 * Math.sin(Math.PI * clamp(b.ta / b.tAir, 0, 1)) : -0.1;
+  const a = clamp(b.alpha, 0, 1);
+  // part under the surface: faded and tinted
+  ctx.save(); surfPath(); ctx.clip(); ctx.globalAlpha = a * 0.45; body(); ctx.restore();
+  // part above the surface: full colour
+  ctx.save(); ctx.beginPath(); ctx.moveTo(-40, -40); ctx.lineTo(W + 40, -40); for (let x = W + 40; x >= -40; x -= 8) ctx.lineTo(x, surf(x)); ctx.closePath(); ctx.clip(); ctx.globalAlpha = a; body(); ctx.restore();
+  ctx.globalAlpha = 1; breachFlap = 0;
 }
 function render() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -93,7 +145,7 @@ function render() {
   drawParts('back');
   drawUnderwater();
   drawShip();
-  if (breach) { const b = breach, ang = clamp(Math.atan2(b.vy, b.vx * 4), -0.95, 0.6); breachFlap = b.state === 'air' ? -0.55 : 0; ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(ang); ctx.globalAlpha = clamp(b.alpha, 0, 1); fishGeneric({ wig: 0, air: true, state: 'swim' }, b.s, D.whale, 0); ctx.restore(); ctx.globalAlpha = 1; breachFlap = 0; }
+  if (breach) drawBreach(breach);
   for (const d of dolphins) if (!(d.delay > 0)) drawOriented(d, Math.atan2(d.vy, d.vx), () => fishGeneric(d, d.s, D[d.kind || 'dolphin'], 0));
   for (const f of fishes) drawCreature(f);
   if (rod.fish) drawCreature(rod.fish);
@@ -112,7 +164,13 @@ function render() {
   }
   if (rings.length) {
     ctx.save(); surfPath(); ctx.clip();
-    for (const r of rings) { if (r.delay > 0) continue; ctx.strokeStyle = r.dark ? `rgba(0,20,40,${r.life * 0.35})` : `rgba(220,245,255,${r.life * 0.6})`; ctx.lineWidth = r.w * FS; circle(r.x, r.y, r.r); ctx.stroke(); }
+    for (const r of rings) {
+      if (r.delay > 0) continue;
+      if (r.dark) { ctx.strokeStyle = `rgba(0,20,40,${r.life * 0.35})`; ctx.lineWidth = r.w * FS; circle(r.x, r.y, r.r); ctx.stroke(); continue; }
+      // shockwave: soft pale band with a crisp bright leading edge
+      ctx.strokeStyle = `rgba(190,235,255,${r.life * 0.16})`; ctx.lineWidth = r.w * FS * 6; circle(r.x, r.y, Math.max(1, r.r - r.w * FS * 2)); ctx.stroke();
+      ctx.strokeStyle = `rgba(240,252,255,${r.life * 0.7})`; ctx.lineWidth = Math.max(1, r.w * FS * 0.7); circle(r.x, r.y, r.r); ctx.stroke();
+    }
     ctx.restore();
   }
   if (blast) drawBlast();
