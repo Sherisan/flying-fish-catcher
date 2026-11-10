@@ -12,7 +12,8 @@ function resize() {
   W = Math.max(1, r.width); H = Math.max(1, r.height);
   DPR = Math.min(2, window.devicePixelRatio || 1);
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
-  const baseS = clamp(Math.min(W / 1040, H / 505), 0.3, 1.35); S = baseS * 0.75; // 0.75 = ship size
+  // ship size: 0.75 on desktop, growing to 0.95 on phone-width screens so the boat isn't tiny there
+  const baseS = clamp(Math.min(W / 1040, H / 505), 0.3, 1.35); S = baseS * lerp(0.95, 0.75, clamp((W - 480) / 420, 0, 1));
   FS = Math.max(baseS, 0.52);
   waterY = H * 0.56; horizonY = waterY - H * 0.07; deepY = waterY + (H - waterY) * 0.62;
   GRAV = H * 1.5;

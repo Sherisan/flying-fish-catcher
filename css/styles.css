@@ -214,3 +214,5 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 /* Multiplier centred over the sea */
 .hud{left:0;right:0}
 @media (max-width:900px){ .hud{right:0} }
+/* Smaller screens: start the multiplier below the corner buttons so they never overlap */
+@media (max-width:1100px){ .hud{top:52px} }
