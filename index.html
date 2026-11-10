@@ -34,7 +34,7 @@
     <div class="history" id="history" aria-label="Recent rounds, newest first"></div>
     <div class="wallet">
       <svg viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="13" fill="#d8b46f"/><circle cx="14" cy="14" r="10" fill="none" stroke="#8a6a2e" stroke-width="1.5"/><path d="M8.5 14.5c2.5-3.5 6-4 9.5-1l2.5-2v6l-2.5-2c-3.5 3-7 2.5-9.5-1z" fill="#5b4416"/></svg>
-      <div><span>Balance</span><strong id="balance">1,000.00</strong></div>
+      <div><span>Balance</span><strong id="balance">—</strong></div>
     </div>
   </header>
 
@@ -53,7 +53,7 @@
         <ol class="list" id="mine"></ol>
       </div>
       <div class="pane guide" id="pane-guide" role="tabpanel" aria-labelledby="tab-guide" hidden></div>
-      <div class="foot"><span>Play credits only. No real money.</span><button class="refill" id="refill" type="button" hidden>Refill to 1,000</button></div>
+      <div class="foot"><span>Every crash point is drawn by the game server.</span></div>
     </aside>
 
     <section class="game" aria-label="Game">
@@ -90,7 +90,10 @@
 </div>
 <div class="sr" aria-live="polite" id="live"></div>
 
+<!-- SignalR client for the GameEngineAPI live crash hub. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <!-- Scripts share one global scope and must load in this order. -->
+<script src="js/00-api.js"></script>
 <script src="js/01-setup.js"></script>
 <script src="js/02-draw-helpers.js"></script>
 <script src="js/03-creatures.js"></script>

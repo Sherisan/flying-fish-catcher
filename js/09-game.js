@@ -1,21 +1,36 @@
 /*
  * Flying Fish Catcher · 09-game.js
- * Game rules and interface: rounds (waiting, running, crashed), the two bet slips, cash-out,
- * auto bet, bot players, the bets list, my bets, the field guide panel and the HUD text.
+ * Rounds, bets, cash-outs and the balance come from GameEngineAPI (see 00-api.js); this file
+ * mirrors them on screen. Also: the two bet slips, the show-only bot players, the bets list,
+ * my bets, the field guide panel and the HUD text.
  */
 'use strict';
 
-/* ================= rounds ================= */
+/* ================= rounds (driven by the game server) ================= */
+// The server decides everything that matters: when betting opens, when the round starts,
+// the crash point, the balance and the payouts. This file only mirrors it on screen.
+// Bots and fish are just for show.
+const live = { client: new LiveCrashClient(GAME_ID), online: false, msg: 'Connecting to the game server…', config: null, status: null, phaseEndsLocal: 0, startedLocal: 0, lastTick: 1 };
+
 function makeBots() {
   const names = NICKS.slice().sort(() => Math.random() - 0.5).slice(0, 14 + ((Math.random() * 9) | 0));
   bots = names.map((name, i) => ({ name, c: BOT_COLORS[i % BOT_COLORS.length], bet: pick([5, 10, 10, 20, 25, 50, 50, 75, 100, 150, 250, 500, 1000]), target: r2(Math.min(40, 1.1 - Math.log(1 - Math.random()) * 1.5)), joinAt: i < 4 ? 0 : rand(0.3, WAIT * 0.85), joined: i < 4, cashed: false, lost: false, at: 0 }));
   listDirty = true;
 }
+/** Seconds of betting left, by the server's clock. */
+function bettingLeft() { return Math.max(0, (live.phaseEndsLocal - performance.now()) / 1000); }
+/** The multiplier right now, worked out the way the server does it (e^(growth × seconds), floored to the cent). */
+function liveMult() {
+  const m = Math.floor(100 * Math.exp(RATE * Math.max(0, performance.now() - live.startedLocal) / 1000)) / 100;
+  return Math.max(1, m, live.lastTick);
+}
 function toWaiting() {
   game.phase = 'waiting'; game.t = 0; game.mult = 1; game.haul = 0; game.catches = {}; game.mile = 0; game.msgT = 0;
+  // the server opens betting a few seconds after the crash: set off a mine that is still on its way down
+  if (mine && mine.state !== 'boom') explode(mine.x, mine.y);
   mine = null; idleJumpT = 1.5; guideDirty = true; game.rounds++;
   if (game.rounds % 2 === 0) setTheme(th.idx + 1);
-  for (const s of slots) { s.active = false; s.cashed = false; s.stake = 0; s.win = 0; s.cashAt = 0; }
+  for (const s of slots) { s.active = false; s.cashed = false; s.stake = 0; s.win = 0; s.cashAt = 0; s.betId = null; }
   makeBots();
   if (!sardines.length) spawnSardines(true);
   for (const s of slots) { if (s.queued || s.autoBet.checked) { s.queued = false; placeBet(s); } }
@@ -24,26 +39,82 @@ function toWaiting() {
   announce('Bets are open for the next round.');
 }
 function startRound() {
-  game.phase = 'running'; game.t = 0; game.mult = 1; game.crashAt = genCrash(); game.haul = 0; game.catches = {}; game.mile = 0;
-  game.round++; spawnT = 0.15; sharkT = rand(2, 4);
+  game.phase = 'running'; game.t = 0; game.mult = 1; game.haul = 0; game.catches = {}; game.mile = 0;
+  live.lastTick = 1; spawnT = 0.15; sharkT = rand(2, 4);
   for (const b of bots) b.joined = true;
   listDirty = true; guideDirty = true;
   announce('Round started. The crew is out catching fish.');
 }
-function crash() {
+function crash(addToHistory) {
   game.phase = 'crashed'; game.t = 0; game.mult = game.crashAt;
-  crashHistory.unshift(game.crashAt); crashHistory = crashHistory.slice(0, 30);
-  let lost = 0;
-  for (const s of slots) {
-    if (!s.active) continue;
-    if (!s.cashed) lost += s.stake;
-    myBets.unshift({ round: game.round, slot: s.id, stake: s.stake, at: s.cashed ? s.cashAt : null, win: s.cashed ? s.win : 0, crash: game.crashAt });
-  }
-  myBets = myBets.slice(0, 40); mineDirty = true;
+  if (addToHistory) { crashHistory.unshift(game.crashAt); crashHistory = crashHistory.slice(0, 30); }
+  const lost = slots.reduce((t, s) => t + (s.active && !s.cashed ? s.stake : 0), 0);
   if (lost > 0) toast(`Mine at ${game.crashAt.toFixed(2)}×. You lost ${fmt(lost)}.`, 'bad'); else announce(`The mine went off at ${game.crashAt.toFixed(2)}×.`);
   for (const b of bots) if (!b.cashed) b.lost = true;
   dropMine();
-  renderHistory(); save(); listDirty = true;
+  renderHistory(); listDirty = true;
+}
+/** A Round message from the server (sent on every phase change), or the round in a snapshot. */
+function applyRound(r, fromEvent) {
+  const newRound = r.id !== game.round;
+  game.round = r.id; live.status = r.status;
+  if (r.status === 'BETTING') {
+    live.phaseEndsLocal = live.client.toLocal(r.phaseEndsAt);
+    if (game.phase !== 'waiting' || newRound) toWaiting();
+  } else if (r.status === 'FLYING') {
+    live.startedLocal = live.client.toLocal(r.startedAt);
+    if (game.phase !== 'running' || newRound) startRound();
+  } else if (r.status === 'CRASHED') {
+    game.crashAt = Number(r.crashPoint);
+    if (game.phase !== 'crashed' || newRound) crash(fromEvent);
+  }
+}
+/** The whole state: on connect, and again after a reconnect. */
+function applySnapshot(s) {
+  live.config = s.config; RATE = s.config.growthRate; WAIT = s.config.bettingMs / 1000;
+  if (s.balance != null) bal = Number(s.balance);
+  crashHistory = (s.state.history || []).map((h) => Number(h.crashPoint));
+  applyRound(s.state.round, false);
+  if (s.state.multiplier != null) live.lastTick = Number(s.state.multiplier);
+  for (const b of s.state.myBets || []) if (b.roundId === game.round) applyMyBet(b, true);
+  renderHistory(); renderBalance(); listDirty = true;
+  if (s.balance == null) live.client.getBalance().then((v) => { bal = Number(v); renderBalance(); }).catch(() => {});
+}
+/** One of my bets changed on the server (placed, auto cashed out, lost, cancelled). */
+function applyMyBet(bet, quiet) {
+  const s = slots[bet.slot]; if (!s) return;
+  if (bet.roundId === game.round) {
+    if (bet.status === 'Active' || bet.status === 'CashedOut' || bet.status === 'Lost') { s.active = true; s.stake = Number(bet.amount); s.betId = bet.id; }
+    if (bet.status === 'CashedOut' && !s.cashed) {
+      s.cashed = true; s.cashAt = Number(bet.cashedOutAt); s.win = Number(bet.win || 0);
+      if (!quiet) { sfx.cash(); toast(`Bet ${s.id}: +${fmt(s.win)} at ${s.cashAt.toFixed(2)}×`, 'good'); }
+    }
+    if (bet.status === 'Cancelled') { s.active = false; s.stake = 0; s.betId = null; }
+    listDirty = true;
+  }
+  if (bet.status === 'CashedOut' || bet.status === 'Lost') {
+    const row = { id: bet.id, round: bet.roundId, slot: s.id, stake: Number(bet.amount), at: bet.status === 'CashedOut' ? Number(bet.cashedOutAt) : null, win: Number(bet.win || 0), crash: game.crashAt };
+    const i = myBets.findIndex((b) => b.id === bet.id);
+    if (i >= 0) myBets[i] = row; else myBets.unshift(row);
+    myBets = myBets.slice(0, 40); mineDirty = true;
+  }
+}
+function setOnline(state, msg) {
+  live.online = state === 'online';
+  live.msg = msg || '';
+  if (state !== 'online' && msg) toast(msg, 'bad');
+}
+async function connectLive() {
+  const c = live.client;
+  c.handlers = {
+    round: (r) => applyRound(r, true),
+    tick: (m) => { live.lastTick = Number(m); },
+    myBet: (bet, balance) => { if (balance != null) { bal = Number(balance); renderBalance(); } applyMyBet(bet, false); },
+    resync: applySnapshot,
+    status: setOnline,
+  };
+  try { applySnapshot(await c.connect()); }
+  catch (e) { setOnline('offline', e && /session|lobby/i.test(e.message || '') ? e.message : "Can't reach the game server. Is GameEngineAPI running?"); }
 }
 function showBanner(text) { bannerEl.textContent = text; bannerEl.classList.add('show'); clearTimeout(showBanner.t); showBanner.t = setTimeout(() => bannerEl.classList.remove('show'), 2600); }
 
@@ -67,8 +138,8 @@ function slotHTML(id, amt, auto) {
 }
 function buildSlots() {
   $('slots').innerHTML = slotHTML('A', 50, '2.00') + slotHTML('B', 20, '5.00');
-  for (const id of ['A', 'B']) {
-    const s = { id, stake: 0, active: false, cashed: false, cashAt: 0, win: 0, queued: false, cache: {} };
+  for (const [idx, id] of [[0, 'A'], [1, 'B']]) {
+    const s = { id, idx, stake: 0, active: false, cashed: false, cashAt: 0, win: 0, queued: false, busy: false, betId: null, cache: {} };
     s.amt = $('bet' + id); s.auto = $('auto' + id); s.autoAt = $('autoAt' + id); s.autoBet = $('autoBet' + id); s.btn = $('act' + id);
     s.main = s.btn.querySelector('.am'); s.sub = s.btn.querySelector('.as'); s.msg = $('msg' + id); s.card = $('slot' + id);
     s.card.addEventListener('click', (e) => {
@@ -77,33 +148,65 @@ function buildSlots() {
       if (b.dataset.set) s.amt.value = b.dataset.set;
     });
     s.btn.addEventListener('click', () => act(s));
-    s.autoBet.addEventListener('change', () => { if (s.autoBet.checked && game.phase === 'waiting' && !s.active) placeBet(s); });
+    s.autoBet.addEventListener('change', () => { if (s.autoBet.checked && live.status === 'BETTING' && game.phase === 'waiting' && !s.active && !s.busy) placeBet(s); });
     s.autoAt.addEventListener('change', () => { const v = parseFloat(s.autoAt.value); if (!(v >= 1.01)) { s.autoAt.value = '1.01'; setMsg(s, 'Auto cash-out needs at least 1.01×.'); } else s.autoAt.value = v.toFixed(2); });
     slots.push(s);
   }
 }
 function readBet(s) { const v = Math.floor(Number(s.amt.value)); return Number.isFinite(v) ? v : 0; }
-function placeBet(s) {
-  const amt = readBet(s);
-  if (amt < 1) { setMsg(s, 'Enter a bet of at least 1 credit.'); return false; }
-  if (amt > bal) { setMsg(s, `You have ${fmt(bal)} credits. Lower the bet or refill.`); s.autoBet.checked = false; return false; }
-  bal = r2(bal - amt); s.stake = amt; s.active = true; s.cashed = false;
-  setMsg(s, ''); save(); renderBalance(); listDirty = true; sfx.chip();
-  return true;
+function readAuto(s) {
+  if (!s.auto.checked) return null;
+  const v = Math.round(parseFloat(s.autoAt.value) * 100) / 100, min = live.config ? live.config.minAutoCashOut : 1.01;
+  return v >= min ? v : null;
 }
-function cancelBet(s) { if (game.phase !== 'waiting' || !s.active) return; bal = r2(bal + s.stake); s.stake = 0; s.active = false; s.autoBet.checked = false; save(); renderBalance(); listDirty = true; }
-function cashOut(s, at) {
-  if (game.phase !== 'running' || !s.active || s.cashed) return;
-  const m = at || game.mult;
-  s.cashed = true; s.cashAt = m; s.win = Math.floor(s.stake * m * 100) / 100; bal = r2(bal + s.win);
-  save(); renderBalance(); listDirty = true; sfx.cash();
-  toast(`Bet ${s.id}: +${fmt(s.win)} at ${m.toFixed(2)}×`, 'good');
+const errText = (e) => (e && e.message ? e.message.replace(/^.*HubException: /, '') : "Can't reach the game server.");
+// Every bet, cancel and cash-out goes to the server. The balance shown is always the server's.
+async function placeBet(s) {
+  const amt = readBet(s), cfg = live.config;
+  if (!live.online) { setMsg(s, live.msg || 'Not connected to the game server.'); s.autoBet.checked = false; return false; }
+  if (cfg && amt < cfg.minBet) { setMsg(s, `The smallest bet is ${fmt(cfg.minBet)}.`); return false; }
+  if (cfg && amt > cfg.maxBet) { setMsg(s, `The biggest bet is ${fmt(cfg.maxBet)}.`); return false; }
+  if (bal != null && amt > bal) { setMsg(s, `You have ${fmt(bal)}. Lower the bet.`); s.autoBet.checked = false; return false; }
+  s.busy = true;
+  try {
+    const res = await live.client.placeBet(s.idx, amt, readAuto(s));
+    if (res.balance != null) bal = Number(res.balance);
+    if (res.ok) { s.active = true; s.cashed = false; s.stake = amt; s.betId = res.bet && res.bet.id; setMsg(s, ''); sfx.chip(); }
+    else { setMsg(s, res.error || 'The bet was not placed.'); s.autoBet.checked = false; }
+    return !!res.ok;
+  } catch (e) { setMsg(s, errText(e)); s.autoBet.checked = false; return false; }
+  finally { s.busy = false; renderBalance(); listDirty = true; }
+}
+async function cancelBet(s) {
+  if (live.status !== 'BETTING' || !s.active) return;
+  s.busy = true;
+  try {
+    const res = await live.client.cancelBet(s.idx);
+    if (res.balance != null) bal = Number(res.balance);
+    if (res.ok) { s.stake = 0; s.active = false; s.betId = null; s.autoBet.checked = false; } else setMsg(s, res.error || 'Could not cancel the bet.');
+  } catch (e) { setMsg(s, errText(e)); }
+  finally { s.busy = false; renderBalance(); listDirty = true; }
+}
+async function cashOut(s) {
+  if (live.status !== 'FLYING' || !s.active || s.cashed) return;
+  s.busy = true;
+  try {
+    const res = await live.client.cashOut(s.idx);
+    if (res.balance != null) bal = Number(res.balance);
+    if (res.ok) {
+      // the server's clock decides the multiplier, not ours
+      if (!s.cashed) { s.cashed = true; s.cashAt = Number(res.multiplier); s.win = Number(res.win); sfx.cash(); toast(`Bet ${s.id}: +${fmt(s.win)} at ${s.cashAt.toFixed(2)}×`, 'good'); }
+    } else setMsg(s, res.error || 'Could not cash out.');
+  } catch (e) { setMsg(s, errText(e)); }
+  finally { s.busy = false; renderBalance(); listDirty = true; }
 }
 function act(s) {
   unlockAudio();
-  if (game.phase === 'waiting') { s.active ? cancelBet(s) : placeBet(s); }
-  else if (game.phase === 'running' && s.active && !s.cashed) cashOut(s);
-  else { s.queued = !s.queued; if (s.queued && readBet(s) > bal) { s.queued = false; setMsg(s, `You have ${fmt(bal)} credits. Lower the bet or refill.`); } }
+  if (s.busy) return;
+  if (!live.online) { setMsg(s, live.msg || 'Not connected to the game server.'); return; }
+  if (live.status === 'BETTING' && game.phase === 'waiting') { s.active ? cancelBet(s) : placeBet(s); }
+  else if (live.status === 'FLYING' && s.active && !s.cashed) cashOut(s);
+  else { s.queued = !s.queued; if (s.queued && bal != null && readBet(s) > bal) { s.queued = false; setMsg(s, `You have ${fmt(bal)}. Lower the bet.`); } }
 }
 
 /* ================= UI ================= */
@@ -120,7 +223,7 @@ function addFeed(kind, who, verb, name) {
   const sp = document.createElement('span'); const b = document.createElement('b'); b.textContent = who; sp.appendChild(b); sp.appendChild(document.createTextNode(` ${verb} a ${name}`)); li.appendChild(sp);
   feedEl.appendChild(li); while (feedEl.children.length > 4) feedEl.removeChild(feedEl.firstChild);
 }
-function renderBalance() { balEl.textContent = fmt(bal); refillBtn.hidden = !(bal < 10 && !slots.some((s) => s.active)); }
+function renderBalance() { balEl.textContent = bal == null ? '—' : fmt(bal); }
 function renderHistory() { histEl.innerHTML = crashHistory.slice(0, 24).map((v, i) => `<span class="pill ${v < 2 ? 'lo' : v < 10 ? 'mid' : 'hi'}${i === 0 ? ' new' : ''}">${v.toFixed(2)}×</span>`).join(''); }
 function initials(n) { return n.replace(/[^A-Za-z ]/g, '').split(' ').filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?'; }
 function renderPlayers() {
@@ -176,10 +279,13 @@ function hud() {
   setText(roundEl, 'round', `Round ${game.round.toLocaleString('en-US')}`);
   if (cache.phase !== p) { cache.phase = p; wrap.dataset.phase = p; }
   setText(haulEl, 'haul', String(game.haul));
-  if (p === 'waiting') {
-    const left = Math.max(0, WAIT - game.t);
+  if (!live.online || !live.status) {
+    setText(tagEl, 'tag', live.msg && !/Connecting/.test(live.msg) ? 'Offline' : 'Connecting'); setText(multEl, 'mult', '–.––×'); setData(multEl, 'ms', 'state', 'idle');
+    setText(statusEl, 'status', live.msg || 'Connecting to the game server…'); barEl.hidden = true;
+  } else if (p === 'waiting') {
+    const left = bettingLeft();
     setText(tagEl, 'tag', 'Bets open'); setText(multEl, 'mult', '1.00×'); setData(multEl, 'ms', 'state', 'idle');
-    setText(statusEl, 'status', `Next round in ${left.toFixed(1)}s`); barEl.hidden = false; barFill.style.transform = `scaleX(${left / WAIT})`;
+    setText(statusEl, 'status', left > 0 ? `Next round in ${left.toFixed(1)}s` : 'Starting…'); barEl.hidden = false; barFill.style.transform = `scaleX(${clamp(left / WAIT, 0, 1)})`;
   } else if (p === 'running') {
     const m = game.mult;
     setText(tagEl, 'tag', 'Catching'); setText(multEl, 'mult', `${m.toFixed(2)}×`); setData(multEl, 'ms', 'state', m >= 10 ? 'hot' : m >= 2 ? 'warm' : 'run');
@@ -194,11 +300,12 @@ function hud() {
     else if (p === 'running' && s.active && !s.cashed) { mode = 'cash'; main = 'Cash out'; sub = `${fmt(s.stake * game.mult)} at ${game.mult.toFixed(2)}×`; }
     else if (s.queued) { mode = 'queued'; main = 'Cancel'; sub = `${fmt(readBet(s))} waiting for next round`; }
     else { mode = 'next'; main = 'Bet next round'; sub = s.cashed ? `Won ${fmt(s.win)} at ${s.cashAt.toFixed(2)}×` : p === 'crashed' && s.active ? `Lost ${fmt(s.stake)}` : `${fmt(readBet(s))} credits`; }
+    if (s.busy) sub = 'Sending…';
     if (s.cache.mode !== mode) { s.cache.mode = mode; s.btn.dataset.mode = mode; }
     if (s.cache.main !== main) { s.cache.main = main; s.main.textContent = main; }
     if (s.cache.sub !== sub) { s.cache.sub = sub; s.sub.textContent = sub; }
     const lock = s.active && p !== 'crashed' && !(p === 'running' && s.cashed);
-    if (s.cache.lock !== lock) { s.cache.lock = lock; s.card.querySelectorAll('.stepper input, .step, .quick button').forEach((el) => { el.disabled = lock; }); }
+    if (s.cache.lock !== lock) { s.cache.lock = lock; s.card.querySelectorAll('.stepper input, .step, .quick button, .auto-grp input').forEach((el) => { el.disabled = lock; }); }
   }
   if (listDirty) renderPlayers();
   if (mineDirty) renderMine();

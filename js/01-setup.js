@@ -13,11 +13,13 @@ const bannerEl = $('banner'), haulEl = $('haul'), feedEl = $('feed');
 const balEl = $('balance'), histEl = $('history'), playersEl = $('players'), mineEl = $('mine'), guideEl = $('pane-guide');
 const crewCount = $('crewCount'), crewTotal = $('crewTotal');
 const toastEl = $('toast'), toastText = $('toastText'), liveEl = $('live');
-const soundBtn = $('sound'), soundLabel = $('soundLabel'), wavesPath = $('waves'), refillBtn = $('refill'), skyBtn = $('skyBtn'), skyLabel = $('skyLabel');
+const soundBtn = $('sound'), soundLabel = $('soundLabel'), wavesPath = $('waves'), skyBtn = $('skyBtn'), skyLabel = $('skyLabel');
 const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 
 /* ================= tuning ================= */
-const RATE = 0.085, WAIT = 6, START_BAL = 1000, KEY = 'flying-fish-catcher-v2', TAU = Math.PI * 2;
+// Round timing and the growth rate come from the game server (GetSnapshot config); these are just defaults until it answers.
+let RATE = 0.085, WAIT = 6;
+const KEY = 'flying-fish-catcher-v2', TAU = Math.PI * 2;
 const MILESTONES = [
   { at: 2, text: 'Sharks circling', ev: 'shark' },
   { at: 3, text: 'Dolphin pod', ev: 'dolphins' },
@@ -120,10 +122,10 @@ const HANG = { x: 228, y: -152 };
 const CHAIN = 34, MINE_R = 28, MUZZLE = 64, HANDLE = 30, CK = 1.22;
 
 /* ================= game state ================= */
-const game = { phase: 'waiting', t: 0, mult: 1, crashAt: 1, haul: 0, round: 1000 + ((Math.random() * 9000) | 0), mile: 0, msg: '', msgT: 0, catches: {}, rounds: 0 };
-let bal = START_BAL, crashHistory = [], myBets = [], bots = [], listDirty = true, mineDirty = true, guideDirty = true;
+const game = { phase: 'waiting', t: 0, mult: 1, crashAt: 1, haul: 0, round: 0, mile: 0, msg: '', msgT: 0, catches: {}, rounds: 0 };
+// bal is the server wallet balance (null until the server answers)
+let bal = null, crashHistory = [], myBets = [], bots = [], listDirty = true, mineDirty = true, guideDirty = true;
 const NICKS = ['SaltyPete', 'Marlin Mo', 'KelpQueen', 'ReelDeal', 'Bilge Rat', 'Mackerel Max', 'Barnacle Bea', 'Captain Clam', 'Snoek Sam', 'Old Gil',
   'DeckHand Dan', 'Tidewalker', 'Bait & Wait', 'Hooked_On_U', 'Gaffer', 'Wave Rider', 'Thabo M.', 'Lerato K.', 'Naledi', 'Pieter v.', 'Anele', 'Zanele',
   'Kagiso', 'Ruan', 'Ayesha', 'Mpho', 'Jabu', 'Riaan', 'Tumi', 'Bongani', 'Yusuf', 'Karabo', 'Megan'];
 const BOT_COLORS = ['#6aa6c6', '#e0a24a', '#9c8ce6', '#5fd0a8', '#e07a7a', '#c9c06a', '#7fc4e8', '#e6a0c8'];
-function genCrash() { const u = Math.random(); return clamp(Math.floor(97 / (1 - u)) / 100, 1, 1000); }

@@ -3,5 +3,8 @@
   "editor.tabSize": 2,
   "files.eol": "\n",
   "prettier.printWidth": 180,
-  "prettier.singleQuote": true
+  "prettier.singleQuote": true,
+  "git.scanRepositories": [
+    "GameEngineAPI"
+  ]
 }

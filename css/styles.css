@@ -145,8 +145,6 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .guide small{display:block;color:var(--mist);font-size:13px;line-height:1.25}
 .guide em{font-style:normal;font-weight:700;font-size:13px;color:var(--brass);font-variant-numeric:tabular-nums;white-space:nowrap}
 .foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px;border-top:1px solid var(--line);font-size:13px;color:var(--mist)}
-.refill{background:transparent;border:1px solid rgba(216,180,111,.45);color:var(--brass);border-radius:8px;height:30px;padding:0 10px;font-weight:700;font-size:13px;cursor:pointer}
-.refill[hidden]{display:none}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 @media (max-width:1100px){ .layout{grid-template-columns:280px minmax(0,1fr)} .feed{display:none} }
